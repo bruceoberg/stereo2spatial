@@ -15,7 +15,7 @@
   };
 
   enterShell = ''
-    if ! command -v swiftc &> /dev/null; then
+    if [ ! -x /usr/bin/swiftc ]; then
       echo ""
       echo "⚠️  swiftc not found. Install Xcode Command Line Tools:"
       echo "    xcode-select --install"
