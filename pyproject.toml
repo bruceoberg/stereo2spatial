@@ -1,0 +1,29 @@
+[project]
+name = "stereo2spatial"
+version = "0.1.0"
+description = "Convert stereo image files (MPO, JPS, ...) to Apple spatial HEIC photos."
+requires-python = ">=3.12"
+license = "MIT"
+dependencies = [
+    "Pillow>=10.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.4",
+]
+
+[project.scripts]
+stereo2spatial = "stereo2spatial.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
