@@ -9,6 +9,7 @@ from pathlib import Path
 
 from PIL import Image
 
+from ..exif import exifSummaryFromImage
 from .base import StereoFormat, StereoPair
 
 
@@ -47,8 +48,14 @@ class FormatJps(StereoFormat):
             imgLeft = img.crop((0, 0, nHalfWidth, img.height))
             imgRight = img.crop((nHalfWidth, 0, img.width, img.height))
 
+            # JPS files sometimes carry EXIF from the capture device.
+
+            summary = exifSummaryFromImage(img)
+
         return StereoPair(
             imgLeft=imgLeft,
             imgRight=imgRight,
+            degFovHorizontal=summary.degFovHorizontal,
             pathSource=path,
+            pathMetadataSource=path,
         )

@@ -9,6 +9,7 @@ from pathlib import Path
 from .base import StereoFormat, StereoPair
 from .jps import FormatJps
 from .mpo import FormatMpo
+from .pair import extractPairFromFiles
 
 # All known format handlers, checked in order.
 
@@ -59,6 +60,7 @@ __all__ = [
     "FormatMpo",
     "FormatJps",
     "extractPair",
+    "extractPairFromFiles",
     "formatForPath",
     "lStrSupportedExtension",
 ]

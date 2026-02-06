@@ -1,81 +1,91 @@
 # stereo2spatial
 
-Convert stereo image files (MPO, JPS, ...) to Apple spatial HEIC photos viewable on Apple Vision Pro.
+Convert stereo image files to Apple spatial HEIC photos for viewing on Apple Vision Pro.
 
-## Requirements
+## Supported Inputs
 
-- macOS (Apple Silicon or Intel)
-- Xcode Command Line Tools (`xcode-select --install`)
-- [devenv](https://devenv.sh/) (manages Python and tooling)
-
-## Setup
-
-```bash
-git clone <repo-url>
-cd stereo2spatial
-devenv shell
-just build
-```
+- **MPO** files (Fujifilm FinePix W1/W3, etc.)
+- **JPS** files (side-by-side JPEG stereo)
+- **Separate left/right image pairs** (from dual-DSLR rigs, etc.)
 
 ## Usage
 
-```bash
-# Convert a single MPO file
-just convert photo.mpo
+### Stereo file mode (MPO, JPS)
 
-# Convert multiple files
-just convert *.mpo *.jps
-
-# Specify output directory
-just convert -o output/ photo.mpo
-
-# Override camera parameters
-just convert --fov 53.7 --baseline 77 photo.mpo
+```sh
+stereo2spatial photo.mpo                    # -> photo_spatial.heic
+stereo2spatial *.mpo -o output/             # batch conversion
 ```
 
-Or using the Python entry point directly:
+### Left/right pair mode
 
-```bash
-uv run stereo2spatial photo.mpo
+```sh
+stereo2spatial --left DSC_001_L.jpg --right DSC_001_R.jpg
+stereo2spatial --left L.tif --right R.tif --output stereo_001.heic
 ```
 
-## Supported Formats
+### EXIF metadata source
 
-| Format | Extension | Description |
-|--------|-----------|-------------|
-| MPO    | `.mpo`    | Multi-Picture Object (Fuji W3, etc.) |
-| JPS    | `.jps`    | JPEG Stereo (side-by-side) |
+By default, EXIF/metadata from the source file (stereo mode) or the left image (pair mode) is embedded in the output HEIC. Use `--metadata` to specify a different source:
 
-## Architecture
+```sh
+# Use the right image's EXIF (maybe it was the "master" camera)
+stereo2spatial --left L.jpg --right R.jpg --metadata R.jpg
 
-**stereo2spatial** (Python) handles format detection, image extraction, and
-orchestration. **pair2spatial** (Swift) handles the final HEIC packaging with
-Apple's spatial photo metadata via the ImageIO framework.
-
-```
-stereo file  →  [Python: extract L/R pair]  →  [Swift: pair2spatial]  →  spatial .heic
+# Use a third reference image for metadata
+stereo2spatial photo.mpo --metadata reference.jpg
 ```
 
-The Swift component is necessary because Apple's spatial photo metadata
-(`kCGImagePropertyGroupTypeStereoPair`, camera intrinsics) requires the
-macOS ImageIO framework, which isn't accessible from Python.
+### FOV and baseline
 
-## Project Structure
+The tool computes horizontal FOV from EXIF data when possible:
 
+1. **FocalLengthIn35mmFilm** tag (most reliable)
+2. **FocalLength + FocalPlaneResolution** tags (sensor width derivation)
+3. **FocalLength + known camera model** database (last resort)
+
+Override with `--fov` and `--baseline`:
+
+```sh
+stereo2spatial photo.mpo --fov 63.5 --baseline 77
 ```
-stereo2spatial/
-├── devenv.nix              # Development environment
-├── justfile                # Build & run recipes
-├── pyproject.toml          # Python project config
-├── swift/
-│   └── Pair2Spatial.swift  # Swift CLI: L/R images → spatial HEIC
-└── stereo2spatial/
-    ├── __init__.py
-    ├── cli.py              # Python CLI entry point
-    ├── combiner.py         # Invokes pair2spatial binary
-    └── formats/
-        ├── __init__.py     # Format registry
-        ├── base.py         # StereoFormat base class
-        ├── mpo.py          # MPO handler
-        └── jps.py          # JPS handler
+
+### Verbose mode
+
+Use `-v` to see what EXIF data was found and how FOV was computed:
+
+```sh
+stereo2spatial -v photo.mpo
+```
+
+## Options
+
+| Flag | Description |
+|------|-------------|
+| `--left <path>` | Left-eye image (use with `--right`) |
+| `--right <path>` | Right-eye image (use with `--left`) |
+| `--metadata <path>` | EXIF donor image for the output HEIC |
+| `-o, --output-dir <dir>` | Output directory |
+| `--output <path>` | Explicit output path (pair mode) |
+| `--fov <degrees>` | Override horizontal field of view |
+| `--baseline <mm>` | Override stereo baseline |
+| `--suffix <str>` | Output filename suffix (default: `_spatial`) |
+| `-v, --verbose` | Print EXIF/metadata details |
+
+## Building
+
+Requires macOS with Xcode Command Line Tools (for the Swift pair2spatial binary).
+
+```sh
+just build      # compile Swift binary
+just convert photo.mpo   # build + convert
+```
+
+## Development
+
+Uses [devenv](https://devenv.sh/) for reproducible development environment.
+
+```sh
+devenv shell
+just test
 ```

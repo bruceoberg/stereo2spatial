@@ -3,7 +3,7 @@
 // Combines a left-eye and right-eye image into a stereo HEIC spatial photo
 // compatible with Apple Vision Pro.
 //
-// Usage: pair2spatial <left-image> <right-image> <output.heic> [--fov <degrees>] [--baseline <mm>]
+// Usage: pair2spatial <left> <right> <output.heic> [--fov <deg>] [--baseline <mm>] [--metadata <path>]
 
 import Foundation
 import ImageIO
@@ -17,6 +17,7 @@ struct Args {
     let pathOutput: String
     let degFovHorizontal: Double
     let mmBaseline: Double
+    let pathMetadata: String?  // Optional EXIF donor image.
 }
 
 func parseArgs() -> Args {
@@ -24,11 +25,12 @@ func parseArgs() -> Args {
 
     guard lArg.count >= 3 else {
         fputs("""
-            Usage: pair2spatial <left-image> <right-image> <output.heic> [--fov <degrees>] [--baseline <mm>]
+            Usage: pair2spatial <left> <right> <output.heic> [options]
 
             Options:
               --fov <degrees>      Horizontal field of view (default: 55.0)
               --baseline <mm>      Stereo baseline in millimeters (default: 65.0)
+              --metadata <path>    Image whose EXIF/metadata is embedded in the output
 
             """, stderr)
         exit(1)
@@ -40,6 +42,7 @@ func parseArgs() -> Args {
 
     var degFov = 55.0
     var mmBaseline = 65.0
+    var pathMetadata: String? = nil
 
     var iArg = 3
     while iArg < lArg.count {
@@ -60,6 +63,14 @@ func parseArgs() -> Args {
             mmBaseline = val
             iArg += 2
 
+        case "--metadata":
+            guard iArg + 1 < lArg.count else {
+                fputs("Error: --metadata requires a file path\n", stderr)
+                exit(1)
+            }
+            pathMetadata = lArg[iArg + 1]
+            iArg += 2
+
         default:
             fputs("Error: unknown argument '\(lArg[iArg])'\n", stderr)
             exit(1)
@@ -71,7 +82,8 @@ func parseArgs() -> Args {
         pathRight: pathRight,
         pathOutput: pathOutput,
         degFovHorizontal: degFov,
-        mmBaseline: mmBaseline
+        mmBaseline: mmBaseline,
+        pathMetadata: pathMetadata
     )
 }
 
@@ -93,6 +105,53 @@ func loadCGImage(path: String) -> CGImage {
     return image
 }
 
+// MARK: - Metadata extraction
+
+/// Read EXIF/TIFF/GPS/IPTC properties from an image file for embedding in the HEIC output.
+///
+/// Returns a dictionary suitable for merging into CGImageDestination properties.
+/// We extract the standard metadata sub-dictionaries and pass them through,
+/// filtering out any properties that would conflict with our stereo-specific keys.
+
+func mpSourceMetadata(path: String) -> [CFString: Any] {
+    let url = URL(fileURLWithPath: path)
+
+    guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else {
+        fputs("Warning: could not read metadata from '\(path)'\n", stderr)
+        return [:]
+    }
+
+    guard let mpRawProps = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] else {
+        return [:]
+    }
+
+    // Keys to copy from the source image metadata.
+    // We specifically exclude Groups and HEIF dictionaries since we provide our own.
+
+    let lKeyToCopy: [CFString] = [
+        kCGImagePropertyExifDictionary,
+        kCGImagePropertyTIFFDictionary,
+        kCGImagePropertyGPSDictionary,
+        kCGImagePropertyIPTCDictionary,
+        kCGImagePropertyJFIFDictionary,
+        kCGImagePropertyColorModel,
+        kCGImagePropertyDPIWidth,
+        kCGImagePropertyDPIHeight,
+        kCGImagePropertyOrientation,
+        kCGImagePropertyProfileName,
+    ]
+
+    var mpResult: [CFString: Any] = [:]
+
+    for key in lKeyToCopy {
+        if let val = mpRawProps[key] {
+            mpResult[key] = val
+        }
+    }
+
+    return mpResult
+}
+
 // MARK: - Spatial HEIC creation
 
 func createSpatialPhoto(
@@ -100,7 +159,8 @@ func createSpatialPhoto(
     imgRight: CGImage,
     pathOutput: String,
     degFovHorizontal: Double,
-    mmBaseline: Double
+    mmBaseline: Double,
+    pathMetadata: String?
 ) {
     let url = URL(fileURLWithPath: pathOutput)
 
@@ -134,7 +194,9 @@ func createSpatialPhoto(
         0, 0, 1,
     ]
 
-    let properties: [CFString: Any] = [
+    // Build the stereo-specific properties (Groups + HEIF camera model).
+
+    var mpStereoProps: [CFString: Any] = [
         kCGImagePropertyGroups: [
             kCGImagePropertyGroupIndex: 0,
             kCGImagePropertyGroupType: kCGImagePropertyGroupTypeStereoPair,
@@ -148,8 +210,26 @@ func createSpatialPhoto(
         ] as [CFString: Any],
     ]
 
-    CGImageDestinationAddImage(destination, imgLeft, properties as CFDictionary)
-    CGImageDestinationAddImage(destination, imgRight, properties as CFDictionary)
+    // Merge source EXIF/TIFF/GPS metadata if a metadata source was provided.
+
+    if let pathMeta = pathMetadata {
+        let mpSourceProps = mpSourceMetadata(path: pathMeta)
+
+        for (key, val) in mpSourceProps {
+            // Don't overwrite our stereo-specific keys.
+
+            if mpStereoProps[key] == nil {
+                mpStereoProps[key] = val
+            }
+        }
+
+        if !mpSourceProps.isEmpty {
+            fputs("Embedded EXIF/metadata from \(URL(fileURLWithPath: pathMeta).lastPathComponent)\n", stderr)
+        }
+    }
+
+    CGImageDestinationAddImage(destination, imgLeft, mpStereoProps as CFDictionary)
+    CGImageDestinationAddImage(destination, imgRight, mpStereoProps as CFDictionary)
 
     guard CGImageDestinationFinalize(destination) else {
         fputs("Error: failed to finalize HEIC output\n", stderr)
@@ -179,7 +259,8 @@ createSpatialPhoto(
     imgRight: imgRight,
     pathOutput: args.pathOutput,
     degFovHorizontal: args.degFovHorizontal,
-    mmBaseline: args.mmBaseline
+    mmBaseline: args.mmBaseline,
+    pathMetadata: args.pathMetadata
 )
 
 let cBytesOutput = try FileManager.default

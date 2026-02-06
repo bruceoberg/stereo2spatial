@@ -76,6 +76,12 @@ def createSpatialHeic(
             str(mmBase),
         ]
 
+        # Pass the metadata source image so Swift can copy its EXIF into the HEIC.
+
+        pathMetadata = pair.pathMetadataSource
+        if pathMetadata and pathMetadata.is_file():
+            lStrCmd.extend(["--metadata", str(pathMetadata)])
+
         result = subprocess.run(
             lStrCmd,
             capture_output=True,

@@ -9,13 +9,19 @@ from PIL import Image
 
 @dataclass
 class StereoPair:
-    """A pair of left/right images extracted from a stereo source."""
+    """A pair of left/right images extracted from a stereo source.
+
+    pathMetadataSource is the file whose EXIF/metadata should be copied
+    into the output HEIC. Defaults to the original source file for
+    single-file formats (MPO, JPS), or the left image for pair mode.
+    """
 
     imgLeft: Image.Image
     imgRight: Image.Image
     degFovHorizontal: float | None = None  # Source FOV if known from metadata
     mmBaseline: float | None = None  # Source baseline if known from metadata
     pathSource: Path | None = None  # Path to the original file
+    pathMetadataSource: Path | None = None  # EXIF donor image (for HEIC metadata)
 
 
 class StereoFormat(ABC):
