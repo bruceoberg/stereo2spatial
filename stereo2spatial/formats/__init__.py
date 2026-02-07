@@ -10,12 +10,14 @@ from .base import StereoFormat, StereoPair
 from .jps import FormatJps
 from .mpo import FormatMpo
 from .pair import extractPairFromFiles
+from .psd import FormatPsd
 
 # All known format handlers, checked in order.
 
 g_lClsFormat: list[type[StereoFormat]] = [
     FormatMpo,
     FormatJps,
+    FormatPsd,
 ]
 
 
@@ -59,6 +61,7 @@ __all__ = [
     "StereoPair",
     "FormatMpo",
     "FormatJps",
+    "FormatPsd",
     "extractPair",
     "extractPairFromFiles",
     "formatForPath",
